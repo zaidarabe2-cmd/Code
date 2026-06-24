@@ -292,7 +292,8 @@ def analyse(df: pd.DataFrame, cfg: dict) -> SMCSignals:
     """Run full SMC analysis on a DataFrame of CLOSED OHLCV candles."""
     sig = SMCSignals()
 
-    swings = find_swings(df, window=5)
+    swing_window = cfg.get("SWING_WINDOW", 5)
+    swings = find_swings(df, window=swing_window)
     sig.swings = swings
 
     events, trend = detect_structure(df, swings, lookback=cfg.get("BOS_LOOKBACK", 20))

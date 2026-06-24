@@ -1,7 +1,8 @@
 """
 Trading Bot Configuration
 =========================
-Edit this file to set your MT5 credentials, symbol, timeframe, and risk params.
+Instruments: XAUUSD (Gold) + NAS100 (Nasdaq 100) — selected for SMC+Wyckoff.
+Timeframe  : M30 — optimal frequency/noise balance for institutional flow.
 """
 import os
 from dotenv import load_dotenv
@@ -12,57 +13,90 @@ load_dotenv()
 MT5_LOGIN    = int(os.getenv("MT5_LOGIN", "0"))
 MT5_PASSWORD = os.getenv("MT5_PASSWORD", "")
 MT5_SERVER   = os.getenv("MT5_SERVER", "")
-MT5_PATH     = os.getenv("MT5_PATH", "")  # Path to terminal64.exe (optional)
+MT5_PATH     = os.getenv("MT5_PATH", "")
 
-# ── Trading Parameters ────────────────────────────────────────────────────────
-SYMBOL     = os.getenv("SYMBOL", "EURUSD")
-TIMEFRAME  = os.getenv("TIMEFRAME", "H1")   # M5, M15, M30, H1, H4, D1
-MAGIC      = 20240001                        # Unique magic number for this bot
+# ── Instruments ───────────────────────────────────────────────────────────────
+# XAUUSD: highest-consensus SMC instrument. Liquidity sweeps and OBs are the
+#   cleanest of any market; ICT built much of the SMC framework around it.
+# NAS100: strong trending structure, clear CHoCH, uncorrelated to gold
+#   (risk-on vs risk-off) → natural portfolio diversification.
+SYMBOLS   = os.getenv("SYMBOLS", "XAUUSD,NAS100").split(",")
+SYMBOL    = SYMBOLS[0]        # primary symbol (used by single-symbol commands)
+TIMEFRAME = os.getenv("TIMEFRAME", "M30")
+MAGIC     = 20240001
 
 # ── Risk Management ───────────────────────────────────────────────────────────
-RISK_PER_TRADE_PCT  = float(os.getenv("RISK_PCT", "0.5"))  # % of balance per trade
-MAX_OPEN_TRADES     = int(os.getenv("MAX_TRADES", "2"))
-MIN_RR_RATIO        = float(os.getenv("MIN_RR", "3.0"))     # minimum risk:reward (user wants >= 1:3)
-SLIPPAGE            = 20                                     # max slippage in points
+RISK_PER_TRADE_PCT = float(os.getenv("RISK_PCT", "0.5"))   # % of balance per trade
+MAX_OPEN_TRADES    = int(os.getenv("MAX_TRADES", "2"))      # total across all symbols
+MIN_RR_RATIO       = float(os.getenv("MIN_RR", "3.0"))      # minimum risk:reward
+SLIPPAGE           = 30                                      # M30 wider spread buffer
 
-# ── Capital-protection rules (the "stay alive" layer) ─────────────────────────
-# These are checked by the bot before every trade; they are what turns a
-# positive-expectancy strategy into a *survivable* one on the $1000 demo.
-MAX_DAILY_LOSS_PCT      = float(os.getenv("MAX_DAILY_LOSS_PCT", "3.0"))   # stop trading for the day
-MAX_CONSECUTIVE_LOSSES  = int(os.getenv("MAX_CONSEC_LOSSES", "4"))        # cool-down after a losing streak
-MAX_TOTAL_DRAWDOWN_PCT  = float(os.getenv("MAX_DD_PCT", "15.0"))         # hard kill-switch vs start equity
-ONE_TRADE_PER_BAR       = True   # never open >1 trade on the same candle / setup
+# ── Capital-protection rules ──────────────────────────────────────────────────
+MAX_DAILY_LOSS_PCT     = float(os.getenv("MAX_DAILY_LOSS_PCT", "3.0"))
+MAX_CONSECUTIVE_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "4"))
+MAX_TOTAL_DRAWDOWN_PCT = float(os.getenv("MAX_DD_PCT", "15.0"))
+ONE_TRADE_PER_BAR      = True
 
-# ── Stop-loss floor ──────────────────────────────────────────────────────────
-# A structure-based SL can be microscopically tight (a tiny OB), which then
-# blows up lot size and gets stopped by spread/noise. We floor the SL distance
-# at ATR * SL_ATR_MULT so every stop has room to breathe.
-ATR_PERIOD     = 14
-SL_ATR_MULT    = float(os.getenv("SL_ATR_MULT", "1.0"))   # min SL distance = 1.0 * ATR
-SL_ATR_BUFFER  = float(os.getenv("SL_ATR_BUFFER", "0.2")) # extra ATR padding beyond the structure level
+# ── Session filter ────────────────────────────────────────────────────────────
+# XAUUSD and NAS100 have peak institutional volume in London+NY overlap (13-17 UTC).
+# Outside these hours liquidity sweeps are less reliable → skip.
+# Set to empty list [] to disable the filter.
+ALLOWED_SESSIONS_UTC = [(7, 17)]   # (open_hour, close_hour) tuples, UTC
+                                   # covers London open → NY close
+
+# ── Stop-loss sizing ──────────────────────────────────────────────────────────
+# M30 is noisier than H1 → floor the SL at 1.5× ATR so stops have room.
+# Gold ATR on M30 ≈ $3–6; NAS100 ATR on M30 ≈ 40–80 pts.
+ATR_PERIOD    = 14
+SL_ATR_MULT   = float(os.getenv("SL_ATR_MULT",  "1.5"))
+SL_ATR_BUFFER = float(os.getenv("SL_ATR_BUFFER", "0.3"))
 
 # ── Signal threshold ──────────────────────────────────────────────────────────
-MIN_CONFLUENCE_SCORE = float(os.getenv("MIN_SCORE", "0.60"))  # min confluence to take a trade
+MIN_CONFLUENCE_SCORE = float(os.getenv("MIN_SCORE", "0.60"))
 
-# ── SMC Settings ──────────────────────────────────────────────────────────────
-OB_LOOKBACK       = 50      # candles to look back for Order Blocks
-FVG_MIN_GAP_PCT   = 0.0005  # minimum FVG gap as fraction of price (5 pips on EURUSD)
-LIQUIDITY_LOOKBACK = 30     # candles to detect liquidity pools
-BOS_LOOKBACK       = 20     # candles to detect Break of Structure swing points
+# ── SMC Settings (tuned for M30) ─────────────────────────────────────────────
+# M30 gives ~48 candles/day → use wider lookbacks to get the same
+# structural coverage as H1 did with smaller lookbacks.
+SWING_WINDOW       = 3      # smaller window = faster swing confirmation on M30
+OB_LOOKBACK        = 100    # covers ~2 days of M30 candles
+FVG_MIN_GAP_PCT    = 0.0003 # 0.03% → ~$0.70 on gold, ~5.7 pts on NAS100
+LIQUIDITY_LOOKBACK = 60     # ~1.25 days of M30
+BOS_LOOKBACK       = 40
 
 # ── Wyckoff Settings ──────────────────────────────────────────────────────────
-WYCKOFF_LOOKBACK  = 100   # candles for Wyckoff phase analysis
-VOLUME_MA_PERIOD  = 20    # period for volume moving average
+WYCKOFF_LOOKBACK = 200    # ~4 days of M30 — enough to see full W phases
+VOLUME_MA_PERIOD = 30
 
-# ── Loop Settings ────────────────────────────────────────────────────────────
-LOOP_INTERVAL_SEC = 60    # seconds between each analysis cycle
-DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"  # True = no real orders
+# ── Loop ─────────────────────────────────────────────────────────────────────
+# Check every 30 min, synced to bar close. The bot waits for closed candles so
+# polling faster than the bar interval wastes CPU without producing new signals.
+LOOP_INTERVAL_SEC = 1800   # 30 minutes
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 
-# ── Timeframe map ─────────────────────────────────────────────────────────────
+# ── Timeframe map (MT5 constants) ─────────────────────────────────────────────
 TIMEFRAME_MAP = {
     "M1": 1, "M2": 2, "M3": 3, "M4": 4, "M5": 5,
     "M6": 6, "M10": 10, "M12": 12, "M15": 15, "M20": 20,
     "M30": 30, "H1": 16385, "H2": 16386, "H3": 16387,
     "H4": 16388, "H6": 16390, "H8": 16392, "H12": 16396,
     "D1": 16408, "W1": 32769, "MN1": 49153,
+}
+
+# ── Instrument-specific characteristics (used by backtester & data generator) ─
+INSTRUMENT_PROFILES = {
+    "XAUUSD": {
+        "start_price": 2300.0,
+        "base_vol_m30": 0.0025,   # ~$5.75 per M30 candle, realistic for gold
+        "description": "Gold — cleanest SMC instrument, highest institutional flow",
+    },
+    "NAS100": {
+        "start_price": 19000.0,
+        "base_vol_m30": 0.0035,   # ~$66 per M30 candle, realistic for Nasdaq
+        "description": "Nasdaq 100 — strong trends, clear CHoCH, risk-on asset",
+    },
+    "EURUSD": {
+        "start_price": 1.10,
+        "base_vol_m30": 0.0004,
+        "description": "Euro/Dollar — highest liquidity forex pair",
+    },
 }

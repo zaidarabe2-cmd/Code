@@ -21,7 +21,8 @@ from datetime import datetime, date
 import pandas as pd
 
 from config import (
-    SYMBOL, TIMEFRAME, LOOP_INTERVAL_SEC, MAX_OPEN_TRADES, MIN_RR_RATIO, DRY_RUN,
+    SYMBOLS, SYMBOL, TIMEFRAME, LOOP_INTERVAL_SEC, MAX_OPEN_TRADES,
+    MIN_RR_RATIO, DRY_RUN,
     MAX_DAILY_LOSS_PCT, MAX_CONSECUTIVE_LOSSES, MAX_TOTAL_DRAWDOWN_PCT, ONE_TRADE_PER_BAR,
 )
 import mt5_connector as mt5c
@@ -184,8 +185,8 @@ def run_cycle(symbol: str, timeframe: str, state: RiskState):
 def main():
     mode = "DRY RUN" if DRY_RUN else "LIVE"
     logger.info("=" * 60)
-    logger.info("SMC + Wyckoff Trading Bot | %s | %s %s | R:R>=%.1f",
-                mode, SYMBOL, TIMEFRAME, MIN_RR_RATIO)
+    logger.info("SMC + Wyckoff Bot | %s | %s | Symbols: %s | R:R>=%.1f",
+                mode, TIMEFRAME, ", ".join(SYMBOLS), MIN_RR_RATIO)
     logger.info("=" * 60)
 
     if not mt5c.connect():
@@ -197,7 +198,12 @@ def main():
 
     try:
         while _running:
-            run_cycle(SYMBOL, TIMEFRAME, state)
+            for sym in SYMBOLS:
+                if not _running:
+                    break
+                run_cycle(sym, TIMEFRAME, state)
+                time.sleep(2)   # brief pause between symbols to avoid rate limits
+
             for _ in range(LOOP_INTERVAL_SEC):
                 if not _running:
                     break

@@ -24,17 +24,27 @@ from typing import Literal, Optional
 from indicators import smc, wyckoff, volume, price_action
 from indicators.atr import atr
 from config import OB_LOOKBACK, FVG_MIN_GAP_PCT, LIQUIDITY_LOOKBACK, BOS_LOOKBACK
-from config import WYCKOFF_LOOKBACK, VOLUME_MA_PERIOD
+from config import WYCKOFF_LOOKBACK, VOLUME_MA_PERIOD, SWING_WINDOW
 from config import MIN_CONFLUENCE_SCORE, ATR_PERIOD, SL_ATR_MULT, SL_ATR_BUFFER
+from config import ALLOWED_SESSIONS_UTC
 
 logger = logging.getLogger(__name__)
 
 CFG = {
-    "OB_LOOKBACK":       OB_LOOKBACK,
-    "FVG_MIN_GAP_PCT":   FVG_MIN_GAP_PCT,
+    "OB_LOOKBACK":        OB_LOOKBACK,
+    "FVG_MIN_GAP_PCT":    FVG_MIN_GAP_PCT,
     "LIQUIDITY_LOOKBACK": LIQUIDITY_LOOKBACK,
     "BOS_LOOKBACK":       BOS_LOOKBACK,
+    "SWING_WINDOW":       SWING_WINDOW,
 }
+
+
+def _in_allowed_session(ts: pd.Timestamp) -> bool:
+    """Returns False outside the configured trading sessions (UTC hours)."""
+    if not ALLOWED_SESSIONS_UTC:
+        return True
+    h = ts.hour
+    return any(start <= h < end for start, end in ALLOWED_SESSIONS_UTC)
 
 
 @dataclass
@@ -55,6 +65,12 @@ def analyse(df: pd.DataFrame, symbol: str) -> TradeSignal:
     """
     if len(df) < 60:
         logger.warning("Not enough data (%d candles) for %s", len(df), symbol)
+        return TradeSignal()
+
+    # Session filter — XAUUSD and NAS100 have best institutional flow 07-17 UTC
+    last_ts = df.index[-1]
+    if not _in_allowed_session(last_ts):
+        logger.debug("Outside trading session (%s UTC) — skipping %s", last_ts.hour, symbol)
         return TradeSignal()
 
     # ── Run indicator modules ─────────────────────────────────────────────────
