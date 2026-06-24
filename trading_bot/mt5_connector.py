@@ -48,6 +48,35 @@ def get_open_trades(symbol: str = "") -> list:
     return list(positions) if positions else []
 
 
+def _supported_filling(symbol: str):
+    """Pick a filling mode the symbol actually supports.
+
+    Hardcoding IOC makes EVERY order fail (retcode 10030) on brokers/symbols
+    that only allow FOK or RETURN. We read the symbol's filling_mode bitmask
+    and choose accordingly.
+    """
+    info = mt5.symbol_info(symbol)
+    if info is None:
+        return mt5.ORDER_FILLING_RETURN
+    mode = info.filling_mode
+    if mode & 1:                      # SYMBOL_FILLING_FOK
+        return mt5.ORDER_FILLING_FOK
+    if mode & 2:                      # SYMBOL_FILLING_IOC
+        return mt5.ORDER_FILLING_IOC
+    return mt5.ORDER_FILLING_RETURN
+
+
+def _round_to_digits(symbol: str, price: float) -> float:
+    """Round a price to the instrument's digit precision (not a fixed 5).
+
+    NAS100 trades to 1-2 digits, gold to 2-3; rounding everything to 5 digits
+    can produce prices the broker rejects as off-tick ('invalid price').
+    """
+    info = mt5.symbol_info(symbol)
+    digits = info.digits if info else 5
+    return round(price, digits)
+
+
 def place_order(
     symbol: str,
     order_type: str,          # "BUY" or "SELL"
@@ -75,18 +104,20 @@ def place_order(
         "volume":   lot,
         "type":     mt5_type,
         "price":    price,
-        "sl":       round(sl, 5),
-        "tp":       round(tp, 5),
+        "sl":       _round_to_digits(symbol, sl),
+        "tp":       _round_to_digits(symbol, tp),
         "deviation": SLIPPAGE,
         "magic":    MAGIC,
         "comment":  comment,
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": _supported_filling(symbol),
     }
 
     result = mt5.order_send(request)
-    if result.retcode != mt5.TRADE_RETCODE_DONE:
-        logger.error("Order failed: %s (%s)", result.comment, result.retcode)
+    if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+        err = result.comment if result else mt5.last_error()
+        code = result.retcode if result else "n/a"
+        logger.error("Order failed: %s (%s)", err, code)
         return None
 
     logger.info("Order placed: ticket=%s %s %s %.4f | SL=%.5f TP=%.5f",
@@ -121,12 +152,13 @@ def close_position(ticket: int) -> bool:
         "magic":     MAGIC,
         "comment":   "SMC-Bot Close",
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": _supported_filling(pos.symbol),
     }
 
     result = mt5.order_send(request)
-    if result.retcode != mt5.TRADE_RETCODE_DONE:
-        logger.error("Close failed: %s", result.comment)
+    if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+        err = result.comment if result else mt5.last_error()
+        logger.error("Close failed: %s", err)
         return False
 
     logger.info("Position %s closed", ticket)

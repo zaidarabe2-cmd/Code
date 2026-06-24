@@ -25,7 +25,7 @@ def run_instrument(instrument: str, n_candles: int, rr: float, n_seeds: int) -> 
     print(f"\n  [{instrument}]")
     for seed in range(n_seeds):
         df = generate_data.generate_market(n_candles, instrument, seed, timeframe_minutes=30)
-        trades = simulate(df, rr=rr)
+        trades = simulate(df, rr=rr, instrument=instrument)
         all_trades.extend(trades)
         n = len(trades)
         if n == 0:
@@ -51,7 +51,10 @@ def stats(trades: list, rr: float) -> dict:
     wr     = len(wins) / n * 100
     r_vals = [t.r_multiple for t in trades]
     exp    = float(np.mean(r_vals))
-    pf     = (rr * len(wins)) / len(losses) if losses else float("inf")
+    # Profit factor from ACTUAL net R outcomes (cost-aware), not idealised rr.
+    gross_win  = sum(r for r in r_vals if r > 0)
+    gross_loss = abs(sum(r for r in r_vals if r < 0))
+    pf     = gross_win / gross_loss if gross_loss > 0 else float("inf")
     bars   = float(np.mean([t.bars_held for t in trades]))
     return {"n": n, "wr": wr, "pf": pf, "exp": exp, "bars": bars}
 

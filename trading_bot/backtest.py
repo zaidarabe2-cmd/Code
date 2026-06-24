@@ -28,7 +28,15 @@ import pandas as pd
 from dataclasses import dataclass
 
 import strategy
-from config import MIN_RR_RATIO, RISK_PER_TRADE_PCT
+from config import MIN_RR_RATIO, RISK_PER_TRADE_PCT, INSTRUMENT_PROFILES
+
+
+def _round_trip_cost(instrument: str) -> float:
+    """Total cost in PRICE units paid per trade (spread + commission + slippage)."""
+    p = INSTRUMENT_PROFILES.get((instrument or "").upper(), {})
+    return (p.get("spread_price", 0.0)
+            + p.get("commission_price", 0.0)
+            + p.get("slippage_price", 0.0))
 
 
 @dataclass
@@ -43,31 +51,44 @@ class Trade:
     won: bool
 
 
-def simulate(df: pd.DataFrame, rr: float, warmup: int = 150) -> list[Trade]:
-    """Walk forward one bar at a time, open at most one position, resolve SL/TP."""
+def simulate(df: pd.DataFrame, rr: float, warmup: int = 150,
+             instrument: str = "BACKTEST") -> list[Trade]:
+    """Walk forward one bar at a time, open at most one position, resolve SL/TP.
+
+    Realism:
+      - Entry is the NEXT bar's OPEN (you cannot fill at the signal candle's
+        close — that price is already gone when the candle closes).
+      - Each trade pays the round-trip cost (spread + commission + slippage),
+        expressed as a fraction of the risk distance and subtracted from R.
+    """
     trades: list[Trade] = []
     n = len(df)
+    cost_price = _round_trip_cost(instrument)
     i = warmup
     while i < n - 1:
         window = df.iloc[:i + 1]            # candles closed up to and including i
-        sig = strategy.analyse(window, "BACKTEST")
+        sig = strategy.analyse(window, instrument)
         if sig.direction is None:
             i += 1
             continue
 
-        entry = sig.entry
+        # Fill at next bar's open — the realistic execution price.
+        entry = float(df.iloc[i + 1]["open"])
         sl = sig.sl
+        # Re-anchor the stop distance to the actual fill price.
         risk = abs(entry - sl)
         if risk <= 0:
             i += 1
             continue
         tp = entry + risk * rr if sig.direction == "BUY" else entry - risk * rr
 
-        # Resolve the trade on subsequent bars.
+        cost_r = cost_price / risk          # trading cost as a fraction of 1R
+
+        # Resolve the trade on subsequent bars (start AFTER the entry bar).
         exit_price = None
         won = False
         bars_held = 0
-        for k in range(i + 1, n):
+        for k in range(i + 2, n):
             bar = df.iloc[k]
             bars_held += 1
             if sig.direction == "BUY":
@@ -87,7 +108,8 @@ def simulate(df: pd.DataFrame, rr: float, warmup: int = 150) -> list[Trade]:
         if exit_price is None:           # ran out of data with position open
             break
 
-        r = rr if won else -1.0
+        # R outcome net of trading costs.
+        r = (rr if won else -1.0) - cost_r
         trades.append(Trade(sig.direction, entry, sl, tp, exit_price, r, bars_held, won))
         i += bars_held + 1               # skip past the closed trade (no overlap)
 

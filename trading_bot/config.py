@@ -87,16 +87,26 @@ INSTRUMENT_PROFILES = {
     "XAUUSD": {
         "start_price": 2300.0,
         "base_vol_m30": 0.0025,   # ~$5.75 per M30 candle, realistic for gold
+        # Realistic round-trip trading cost (typical retail/ECN broker):
+        "spread_price":     0.25,   # ~25 cents spread on gold
+        "commission_price": 0.07,   # ~$7/lot round turn ≈ $0.07/oz in price terms
+        "slippage_price":   0.10,   # avg slippage on market orders
         "description": "Gold — cleanest SMC instrument, highest institutional flow",
     },
     "NAS100": {
         "start_price": 19000.0,
         "base_vol_m30": 0.0035,   # ~$66 per M30 candle, realistic for Nasdaq
+        "spread_price":     1.5,    # ~1.5 index points spread
+        "commission_price": 0.0,    # usually spread-only on indices CFD
+        "slippage_price":   1.0,
         "description": "Nasdaq 100 — strong trends, clear CHoCH, risk-on asset",
     },
     "EURUSD": {
         "start_price": 1.10,
         "base_vol_m30": 0.0004,
+        "spread_price":     0.00008,  # ~0.8 pip
+        "commission_price": 0.00004,
+        "slippage_price":   0.00003,
         "description": "Euro/Dollar — highest liquidity forex pair",
     },
 }
