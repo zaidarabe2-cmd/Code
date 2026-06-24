@@ -22,8 +22,10 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 from indicators import smc, wyckoff, volume, price_action
+from indicators.atr import atr
 from config import OB_LOOKBACK, FVG_MIN_GAP_PCT, LIQUIDITY_LOOKBACK, BOS_LOOKBACK
 from config import WYCKOFF_LOOKBACK, VOLUME_MA_PERIOD
+from config import MIN_CONFLUENCE_SCORE, ATR_PERIOD, SL_ATR_MULT, SL_ATR_BUFFER
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +169,7 @@ def analyse(df: pd.DataFrame, symbol: str) -> TradeSignal:
         sell_score += 0.05
 
     # ── Decide signal ─────────────────────────────────────────────────────────
-    MIN_SCORE = 0.55   # at least 55% confluence required
+    MIN_SCORE = MIN_CONFLUENCE_SCORE   # configurable confluence threshold
 
     best_direction = None
     best_score = 0.0
@@ -186,16 +188,23 @@ def analyse(df: pd.DataFrame, symbol: str) -> TradeSignal:
         return TradeSignal()
 
     # ── SL placement ──────────────────────────────────────────────────────────
-    # SL is placed just beyond the nearest relevant Order Block or recent swing
+    # Base SL at the relevant structure level (OB extreme / recent swing), then
+    # floor the distance at SL_ATR_MULT * ATR so it is never tighter than the
+    # market's noise — this is what keeps lot sizing and stop survival sane.
+    atr_val = atr(df, ATR_PERIOD)
+    min_dist = atr_val * SL_ATR_MULT
+    buffer   = atr_val * SL_ATR_BUFFER
+
     if best_direction == "BUY":
-        # SL below the lowest unviolated bullish OB bottom, or recent swing low
-        ob_bottoms = [ob.bottom for ob in active_bull_obs if ob.bottom < current_close]
-        sl = min(ob_bottoms) if ob_bottoms else current_low
-        sl = sl - (current_close - sl) * 0.1   # small buffer
+        ob_lows = [ob.low for ob in active_bull_obs if ob.low < current_close]
+        struct_sl = min(ob_lows) if ob_lows else current_low
+        struct_sl -= buffer
+        sl = min(struct_sl, current_close - min_dist)   # widen if structure is too tight
     else:
-        ob_tops = [ob.top for ob in active_bear_obs if ob.top > current_close]
-        sl = max(ob_tops) if ob_tops else current_high
-        sl = sl + (sl - current_close) * 0.1
+        ob_highs = [ob.high for ob in active_bear_obs if ob.high > current_close]
+        struct_sl = max(ob_highs) if ob_highs else current_high
+        struct_sl += buffer
+        sl = max(struct_sl, current_close + min_dist)
 
     return TradeSignal(
         direction=best_direction,

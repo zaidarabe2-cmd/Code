@@ -20,16 +20,35 @@ TIMEFRAME  = os.getenv("TIMEFRAME", "H1")   # M5, M15, M30, H1, H4, D1
 MAGIC      = 20240001                        # Unique magic number for this bot
 
 # ── Risk Management ───────────────────────────────────────────────────────────
-RISK_PER_TRADE_PCT  = float(os.getenv("RISK_PCT", "1.0"))  # % of balance per trade
-MAX_OPEN_TRADES     = int(os.getenv("MAX_TRADES", "3"))
-MIN_RR_RATIO        = float(os.getenv("MIN_RR", "2.0"))     # minimum risk:reward
+RISK_PER_TRADE_PCT  = float(os.getenv("RISK_PCT", "0.5"))  # % of balance per trade
+MAX_OPEN_TRADES     = int(os.getenv("MAX_TRADES", "2"))
+MIN_RR_RATIO        = float(os.getenv("MIN_RR", "3.0"))     # minimum risk:reward (user wants >= 1:3)
 SLIPPAGE            = 20                                     # max slippage in points
 
+# ── Capital-protection rules (the "stay alive" layer) ─────────────────────────
+# These are checked by the bot before every trade; they are what turns a
+# positive-expectancy strategy into a *survivable* one on the $1000 demo.
+MAX_DAILY_LOSS_PCT      = float(os.getenv("MAX_DAILY_LOSS_PCT", "3.0"))   # stop trading for the day
+MAX_CONSECUTIVE_LOSSES  = int(os.getenv("MAX_CONSEC_LOSSES", "4"))        # cool-down after a losing streak
+MAX_TOTAL_DRAWDOWN_PCT  = float(os.getenv("MAX_DD_PCT", "15.0"))         # hard kill-switch vs start equity
+ONE_TRADE_PER_BAR       = True   # never open >1 trade on the same candle / setup
+
+# ── Stop-loss floor ──────────────────────────────────────────────────────────
+# A structure-based SL can be microscopically tight (a tiny OB), which then
+# blows up lot size and gets stopped by spread/noise. We floor the SL distance
+# at ATR * SL_ATR_MULT so every stop has room to breathe.
+ATR_PERIOD     = 14
+SL_ATR_MULT    = float(os.getenv("SL_ATR_MULT", "1.0"))   # min SL distance = 1.0 * ATR
+SL_ATR_BUFFER  = float(os.getenv("SL_ATR_BUFFER", "0.2")) # extra ATR padding beyond the structure level
+
+# ── Signal threshold ──────────────────────────────────────────────────────────
+MIN_CONFLUENCE_SCORE = float(os.getenv("MIN_SCORE", "0.60"))  # min confluence to take a trade
+
 # ── SMC Settings ──────────────────────────────────────────────────────────────
-OB_LOOKBACK       = 50    # candles to look back for Order Blocks
-FVG_MIN_GAP_PCT   = 0.01  # minimum FVG gap as % of price
-LIQUIDITY_LOOKBACK = 30   # candles to detect liquidity pools
-BOS_LOOKBACK       = 20   # candles to detect Break of Structure swing points
+OB_LOOKBACK       = 50      # candles to look back for Order Blocks
+FVG_MIN_GAP_PCT   = 0.0005  # minimum FVG gap as fraction of price (5 pips on EURUSD)
+LIQUIDITY_LOOKBACK = 30     # candles to detect liquidity pools
+BOS_LOOKBACK       = 20     # candles to detect Break of Structure swing points
 
 # ── Wyckoff Settings ──────────────────────────────────────────────────────────
 WYCKOFF_LOOKBACK  = 100   # candles for Wyckoff phase analysis
