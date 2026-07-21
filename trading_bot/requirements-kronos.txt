@@ -1,0 +1,13 @@
+# Dependencias OPCIONALES para la capa de IA Kronos.
+# Solo necesarias si KRONOS_ENABLED=true. El bot funciona sin esto.
+#
+# Instalación en tu máquina (no en el entorno de Claude Code):
+#   1. git clone https://github.com/shiyu-coder/Kronos
+#   2. Haz importable el repo (PYTHONPATH o instálalo)
+#   3. pip install -r requirements-kronos.txt
+#   4. En .env: KRONOS_ENABLED=true
+#
+# Los pesos del modelo se descargan solos de Hugging Face en la primera carga.
+torch>=2.0.0
+huggingface_hub>=0.20.0
+einops>=0.7.0

@@ -20,8 +20,29 @@ trading_bot/
     ├── wyckoff.py        # Acumulación/Distribución, Spring, Upthrust
     ├── volume.py         # VSA: no_supply/no_demand, climax, esfuerzo/resultado
     ├── price_action.py   # Pin bars, engulfing, inside bars, EMA trend
-    └── atr.py            # ATR para el piso del Stop Loss
+    ├── atr.py            # ATR para el piso del Stop Loss
+    └── kronos_signal.py  # Capa IA opcional (Kronos foundation model)
 ```
+
+## Capa de IA opcional — Kronos
+
+[Kronos](https://github.com/shiyu-coder/Kronos) (Tsinghua, AAAI 2026) es un
+foundation model que predice velas futuras (OHLCV). Se integra como **una señal
+más de confluencia** (peso `KRONOS_WEIGHT=0.20`), NUNCA como disparador único.
+
+- **Desactivado por defecto** (`KRONOS_ENABLED=false`). El bot funciona igual sin él.
+- Si falta `torch` o los pesos, devuelve señal neutra y avisa una vez — sin crashear.
+- Es un **forecast probabilístico, no un edge garantizado**. Valídalo antes de confiar.
+
+**Activarlo en tu máquina:**
+```bash
+git clone https://github.com/shiyu-coder/Kronos    # hazlo importable (PYTHONPATH)
+pip install -r requirements-kronos.txt
+# en .env:  KRONOS_ENABLED=true
+```
+Cómo funciona: forecast de `KRONOS_PRED_LEN` velas → si el retorno esperado supera
+`KRONOS_MIN_MOVE`, suma al score en la dirección prevista, ponderado por la
+concordancia entre las `KRONOS_SAMPLES` trayectorias Monte-Carlo (confianza real).
 
 ## Reglas de rentabilidad / supervivencia (incorporadas)
 

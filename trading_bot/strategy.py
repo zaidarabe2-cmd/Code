@@ -21,8 +21,9 @@ import pandas as pd
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from indicators import smc, wyckoff, volume, price_action
+from indicators import smc, wyckoff, volume, price_action, kronos_signal
 from indicators.atr import atr
+from config import KRONOS_ENABLED, KRONOS_WEIGHT
 from config import OB_LOOKBACK, FVG_MIN_GAP_PCT, LIQUIDITY_LOOKBACK, BOS_LOOKBACK
 from config import WYCKOFF_LOOKBACK, VOLUME_MA_PERIOD, SWING_WINDOW
 from config import MIN_CONFLUENCE_SCORE, ATR_PERIOD, SL_ATR_MULT, SL_ATR_BUFFER
@@ -183,6 +184,16 @@ def analyse(df: pd.DataFrame, symbol: str) -> TradeSignal:
         buy_score += 0.05
     elif pa_sig.ema_trend == "bearish":
         sell_score += 0.05
+
+    # 9. Kronos AI forecast (optional — neutral if disabled/unavailable)
+    if KRONOS_ENABLED:
+        k_sig = kronos_signal.forecast(df)
+        if k_sig.available and k_sig.direction == "bullish":
+            buy_score += k_sig.strength * KRONOS_WEIGHT
+            buy_reasons.append(f"Kronos +{k_sig.expected_return*100:.2f}% (conf {k_sig.strength:.2f})")
+        elif k_sig.available and k_sig.direction == "bearish":
+            sell_score += k_sig.strength * KRONOS_WEIGHT
+            sell_reasons.append(f"Kronos {k_sig.expected_return*100:.2f}% (conf {k_sig.strength:.2f})")
 
     # ── Decide signal ─────────────────────────────────────────────────────────
     MIN_SCORE = MIN_CONFLUENCE_SCORE   # configurable confluence threshold

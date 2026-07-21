@@ -54,6 +54,22 @@ SL_ATR_BUFFER = float(os.getenv("SL_ATR_BUFFER", "0.3"))
 # ── Signal threshold ──────────────────────────────────────────────────────────
 MIN_CONFLUENCE_SCORE = float(os.getenv("MIN_SCORE", "0.60"))
 
+# ── Kronos AI forecast (optional confluence layer) ────────────────────────────
+# Kronos (Tsinghua, AAAI 2026) is a foundation model that forecasts future
+# K-lines (OHLCV). Used here as ONE additional confluence factor, NOT as a
+# standalone signal. Requires `torch` + downloaded weights on the LIVE machine.
+# Disabled by default until you validate it on real data — the bot runs fine
+# without it (graceful fallback returns a neutral signal).
+KRONOS_ENABLED   = os.getenv("KRONOS_ENABLED", "false").lower() == "true"
+KRONOS_MODEL     = os.getenv("KRONOS_MODEL", "NeoQuasar/Kronos-small")
+KRONOS_TOKENIZER = os.getenv("KRONOS_TOKENIZER", "NeoQuasar/Kronos-Tokenizer-base")
+KRONOS_DEVICE    = os.getenv("KRONOS_DEVICE", "cpu")   # "cuda:0" if you have a GPU
+KRONOS_LOOKBACK  = int(os.getenv("KRONOS_LOOKBACK", "400"))   # candles fed to the model (<= max_context 512)
+KRONOS_PRED_LEN  = int(os.getenv("KRONOS_PRED_LEN", "12"))    # candles to forecast ahead (12 × M30 = 6h)
+KRONOS_SAMPLES   = int(os.getenv("KRONOS_SAMPLES", "20"))     # Monte-Carlo forecast paths (dispersion = confidence)
+KRONOS_WEIGHT    = float(os.getenv("KRONOS_WEIGHT", "0.20"))  # max contribution to the confluence score
+KRONOS_MIN_MOVE  = float(os.getenv("KRONOS_MIN_MOVE", "0.001"))  # min forecast move (0.1%) to count as directional
+
 # ── SMC Settings (tuned for M30) ─────────────────────────────────────────────
 # M30 gives ~48 candles/day → use wider lookbacks to get the same
 # structural coverage as H1 did with smaller lookbacks.
