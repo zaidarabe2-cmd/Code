@@ -116,6 +116,26 @@ def simulate(df: pd.DataFrame, rr: float, warmup: int = 150,
     return trades
 
 
+def _save_equity_curve(curve, path: str = "backtest_results.png"):
+    """Save an equity-curve PNG if matplotlib is available (optional dep)."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(10, 4))
+        plt.plot(curve, color="#2e86de", linewidth=1.5)
+        plt.title("Equity Curve")
+        plt.xlabel("Trade #")
+        plt.ylabel("Equity")
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(path, dpi=110)
+        plt.close()
+        print(f"  Equity curve saved → {path}")
+    except ImportError:
+        pass   # matplotlib not installed — skip silently
+
+
 def report(trades: list[Trade], start_balance: float, risk_pct: float) -> dict:
     if not trades:
         print("No trades generated. Loosen filters or provide more data.")
@@ -150,6 +170,12 @@ def report(trades: list[Trade], start_balance: float, risk_pct: float) -> dict:
     expectancy_r = r_sum / n
     ret_pct = (equity - start_balance) / start_balance * 100
 
+    # Sharpe ratio on per-trade R returns (annualised-agnostic, per-trade basis).
+    r_list = [t.r_multiple for t in trades]
+    r_mean = np.mean(r_list)
+    r_std = np.std(r_list)
+    sharpe = (r_mean / r_std * np.sqrt(n)) if r_std > 1e-9 else 0.0
+
     print("\n" + "=" * 52)
     print("                BACKTEST RESULTS")
     print("=" * 52)
@@ -157,10 +183,13 @@ def report(trades: list[Trade], start_balance: float, risk_pct: float) -> dict:
     print(f"  Win rate          : {win_rate:5.1f}%  ({wins}W / {losses}L)")
     print(f"  Profit factor     : {profit_factor:5.2f}      (want > 1.3)")
     print(f"  Expectancy / trade : {expectancy_r:+5.2f} R    (must be > 0)")
-    print(f"  Max drawdown      : {max_dd:5.1f}%")
+    print(f"  Sharpe (per-trade) : {sharpe:5.2f}      (want > 1.0)")
+    print(f"  Max drawdown      : {max_dd:5.1f}%      (want < 15%)")
     print(f"  Start balance     : {start_balance:,.2f}")
     print(f"  Final balance     : {equity:,.2f}   ({ret_pct:+.1f}%)")
     print("=" * 52)
+
+    _save_equity_curve(curve)
 
     # Break-even win rate needed for this R:R, as a sanity anchor.
     rr = trades[0].tp and abs(trades[0].tp - trades[0].entry) / abs(trades[0].entry - trades[0].sl)

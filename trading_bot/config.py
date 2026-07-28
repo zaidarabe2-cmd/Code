@@ -37,6 +37,19 @@ MAX_CONSECUTIVE_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "4"))
 MAX_TOTAL_DRAWDOWN_PCT = float(os.getenv("MAX_DD_PCT", "15.0"))
 ONE_TRADE_PER_BAR      = True
 
+# ── Correlation filter (ported from the Alpaca playbook, adapted) ─────────────
+# XAUUSD and NAS100 are driven by the same macro risk-on/risk-off factor:
+#   risk-ON  = NAS100 up  AND gold down   → long NAS100 / short XAUUSD
+#   risk-OFF = NAS100 down AND gold up     → short NAS100 / long XAUUSD
+# So "long NAS100 + short XAUUSD" is the SAME macro bet doubled, not diversified.
+# This filter blocks a new trade that would push net macro exposure past the cap.
+CORRELATION_FILTER = os.getenv("CORR_FILTER", "true").lower() == "true"
+# Each instrument's "risk-on beta": +1 means a LONG expresses risk-on,
+# -1 means a LONG expresses risk-off. Long XAUUSD = risk-off → -1.
+RISK_ON_BETA = {"NAS100": +1.0, "US100": +1.0, "USTEC": +1.0,
+                "XAUUSD": -1.0, "GOLD": -1.0}
+MAX_NET_MACRO_EXPOSURE = 1.0   # max |sum of open risk-on betas|; 1.0 = one macro bet
+
 # ── Session filter ────────────────────────────────────────────────────────────
 # XAUUSD and NAS100 have peak institutional volume in London+NY overlap (13-17 UTC).
 # Outside these hours liquidity sweeps are less reliable → skip.

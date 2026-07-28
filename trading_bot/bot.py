@@ -28,6 +28,8 @@ from config import (
 import mt5_connector as mt5c
 import strategy
 import risk_manager as rm
+import portfolio
+import journal
 
 logging.basicConfig(
     level=logging.INFO,
@@ -150,6 +152,14 @@ def run_cycle(symbol: str, timeframe: str, state: RiskState):
 
     logger.info("Signal: %s | Score=%.2f | %s", sig.direction, sig.score, sig.reason)
 
+    # Correlation filter — don't double a macro risk-on/off bet across instruments.
+    all_open = mt5c.get_open_trades()
+    ok_corr, corr_reason = portfolio.allows_new_trade(symbol, sig.direction, all_open)
+    if not ok_corr:
+        logger.info("Blocked by %s", corr_reason)
+        state.last_traded_bar = last_bar_time
+        return
+
     # Respect broker minimum stop distance, then size from the real price distance.
     sl = rm.enforce_min_stop(symbol, sig.entry, sig.sl, sig.direction)
     sl_distance = abs(sig.entry - sl)
@@ -177,6 +187,8 @@ def run_cycle(symbol: str, timeframe: str, state: RiskState):
     ticket = mt5c.place_order(symbol, sig.direction, lot, sl, tp, comment=f"SMC|{sig.score:.2f}")
     if ticket:
         state.last_traded_bar = last_bar_time
+        journal.log_trade(symbol, sig.direction, lot, sig.entry, sl, tp,
+                          actual_rr, sig.score, ticket, comment=f"SMC|{sig.score:.2f}")
         logger.info("Order placed – ticket=%s", ticket)
 
 
